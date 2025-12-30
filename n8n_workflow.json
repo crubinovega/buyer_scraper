@@ -1,0 +1,153 @@
+{
+    "name": "Monthly Investor Scraper to Google Sheets",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "cronExpression",
+                            "expression": "0 9 1 * *"
+                        }
+                    ]
+                }
+            },
+            "name": "Schedule Trigger",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "https://your-deployment-url.railway.app/investors/hillsborough/run_sync",
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "key",
+                            "value": "YOUR_API_KEY"
+                        },
+                        {
+                            "name": "max_pages",
+                            "value": "450"
+                        },
+                        {
+                            "name": "days_back",
+                            "value": "35"
+                        }
+                    ]
+                }
+            },
+            "name": "HTTP Request - Scraper",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 3,
+            "position": [
+                450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "sheetId": {
+                    "__rl": true,
+                    "value": "YOUR_SHEET_ID",
+                    "mode": "id"
+                },
+                "range": "Investors!A:E",
+                "options": {
+                    "valueRenderMode": "UNFORMATTED_VALUE"
+                }
+            },
+            "name": "Google Sheets - Read Existing",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4,
+            "position": [
+                650,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "// Get data from HTTP Request (scraper results)\nconst scraperData = $input.first().json.investors || [];\n\n// Get existing data from Google Sheets\nconst existingData = $('Google Sheets - Read Existing').all();\n\n// Create composite keys for existing data (Name + Address)\nconst existingKeys = new Set(\n  existingData.map(item => {\n    const name = (item.json.Name || '').toString().trim().toUpperCase();\n    const address = (item.json.Address || '').toString().trim().toUpperCase();\n    return `${name}|${address}`;\n  })\n);\n\n// Filter out duplicates based on composite key\nconst newInvestors = scraperData.filter(investor => {\n  const name = (investor.Name || '').toString().trim().toUpperCase();\n  const address = (investor.Address || '').toString().trim().toUpperCase();\n  const compositeKey = `${name}|${address}`;\n  return !existingKeys.has(compositeKey);\n});\n\n// Return only new investors\nreturn newInvestors.map(investor => ({ json: investor }));"
+            },
+            "name": "Remove Duplicates",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "append",
+                "sheetId": {
+                    "__rl": true,
+                    "value": "YOUR_SHEET_ID",
+                    "mode": "id"
+                },
+                "range": "Investors",
+                "options": {
+                    "valueInputMode": "USER_ENTERED"
+                }
+            },
+            "name": "Google Sheets - Append New",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4,
+            "position": [
+                1050,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Schedule Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "HTTP Request - Scraper",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "HTTP Request - Scraper": {
+            "main": [
+                [
+                    {
+                        "node": "Google Sheets - Read Existing",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Google Sheets - Read Existing": {
+            "main": [
+                [
+                    {
+                        "node": "Remove Duplicates",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Remove Duplicates": {
+            "main": [
+                [
+                    {
+                        "node": "Google Sheets - Append New",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}
